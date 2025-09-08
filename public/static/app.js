@@ -575,11 +575,11 @@ class InvestmentApp {
           </div>
           
           <div class="flex gap-2 mt-6">
-            <button data-action="showBuyModal" data-symbol="${symbol}"
+            <button onclick="app.showBuyModal('${symbol}')"
                     class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
               <i class="fas fa-shopping-cart mr-2"></i>Buy
             </button>
-            <button data-action="addToWatchlist" data-symbol="${symbol}"
+            <button onclick="app.showWatchlistModal('${symbol}')"
                     class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
               <i class="fas fa-star mr-2"></i>Watch
             </button>
@@ -760,6 +760,7 @@ class InvestmentApp {
                     <th class="text-right py-2">Current Price</th>
                     <th class="text-right py-2">Value</th>
                     <th class="text-right py-2">Gain/Loss</th>
+                    <th class="text-right py-2">%</th>
                     <th class="text-right py-2">Actions</th>
                   </tr>
                 </thead>
@@ -774,16 +775,19 @@ class InvestmentApp {
                       <td class="py-3 text-right font-semibold" data-symbol="${h.symbol}" data-field="value">$${h.current_value.toFixed(2)}</td>
                       <td class="py-3 text-right ${h.gain_loss >= 0 ? 'positive' : 'negative'}" data-symbol="${h.symbol}" data-field="gain-loss">
                         ${h.gain_loss >= 0 ? '+' : ''}$${Math.abs(h.gain_loss).toFixed(2)}
-                        <br>
-                        <span class="text-sm">(${h.gain_loss_percent >= 0 ? '+' : ''}${h.gain_loss_percent.toFixed(2)}%)</span>
+                      </td>
+                      <td class="py-3 text-right ${h.gain_loss_percent >= 0 ? 'positive' : 'negative'}" data-symbol="${h.symbol}" data-field="gain-loss-percent">
+                        (${h.gain_loss_percent >= 0 ? '+' : ''}${h.gain_loss_percent.toFixed(2)}%)
                       </td>
                       <td class="py-3 text-right">
-                        <button data-action="showBuyModal" data-symbol="${h.symbol}" 
-                                class="text-green-600 hover:text-green-800 mr-2">
+                        <button onclick="app.showBuyModal('${h.symbol}')" 
+                                class="text-green-600 hover:text-green-800 mr-2"
+                                title="Buy more ${h.symbol}">
                           <i class="fas fa-plus"></i>
                         </button>
-                        <button data-action="showSellModal" data-symbol="${h.symbol}"
-                                class="text-red-600 hover:text-red-800">
+                        <button onclick="app.showSellModal('${h.symbol}')"
+                                class="text-red-600 hover:text-red-800"
+                                title="Sell ${h.symbol}">
                           <i class="fas fa-minus"></i>
                         </button>
                       </td>
@@ -923,15 +927,15 @@ class InvestmentApp {
             <p class="text-gray-600 text-sm">${stock.name}</p>
             <p class="text-gray-500 text-xs mt-1">${stock.type || 'Stock'} - ${stock.region || stock.exchange || ''}</p>
             <div class="mt-3 flex gap-2">
-              <button data-action="showQuote" data-symbol="${stock.symbol}"
+              <button onclick="app.showQuoteModal('${stock.symbol}')"
                       class="flex-1 bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">
                 <i class="fas fa-chart-line mr-1"></i>Quote
               </button>
-              <button data-action="showBuyModal" data-symbol="${stock.symbol}"
+              <button onclick="app.showBuyModal('${stock.symbol}')"
                       class="flex-1 bg-green-100 text-green-700 px-3 py-1 rounded hover:bg-green-200">
                 <i class="fas fa-shopping-cart mr-1"></i>Buy
               </button>
-              <button data-action="addToWatchlist" data-symbol="${stock.symbol}"
+              <button onclick="app.showWatchlistModal('${stock.symbol}')"
                       class="flex-1 bg-yellow-100 text-yellow-700 px-3 py-1 rounded hover:bg-yellow-200">
                 <i class="fas fa-star mr-1"></i>Watch
               </button>
