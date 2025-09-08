@@ -1,34 +1,25 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "webapp",
-  "compatibility_date": "2025-09-08",
+  "name": "investment-platform",
+  "compatibility_date": "2024-01-01",
+  "compatibility_flags": ["nodejs_compat"],
   "pages_build_output_dir": "./dist",
-  "compatibility_flags": [
-    "nodejs_compat"
+  
+  // D1 Database for portfolio data
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "investment-db",
+      "database_id": "investment-db-id" // Will be replaced with actual ID after creation
+    }
+  ],
+  
+  // KV for caching API responses
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "investment-cache-id", // Will be replaced with actual ID
+      "preview_id": "investment-cache-preview-id"
+    }
   ]
-  // "vars": {
-  //   "MY_VAR": "my-variable"
-  // },
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "MY_KV_NAMESPACE",
-  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  //   }
-  // ],
-  // "r2_buckets": [
-  //   {
-  //     "binding": "MY_BUCKET",
-  //     "bucket_name": "my-bucket"
-  //   }
-  // ],
-  // "d1_databases": [
-  //   {
-  //     "binding": "MY_DB",
-  //     "database_name": "my-database",
-  //     "database_id": ""
-  //   }
-  // ],
-  // "ai": {
-  //   "binding": "AI"
-  // }
 }
