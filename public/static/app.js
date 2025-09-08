@@ -2,7 +2,8 @@
 
 class InvestmentApp {
   constructor() {
-    this.portfolioId = 1; // Default portfolio
+    // Get portfolio ID from localStorage or use default
+    this.portfolioId = localStorage.getItem('selectedPortfolioId') || '1';
     this.currentView = 'portfolio';
     this.portfolio = null;
     this.watchlist = [];
@@ -22,6 +23,15 @@ class InvestmentApp {
     this.loadPortfolio();
     this.initializeRealtime();
     this.setupEventListeners();
+    this.setupPortfolioChangeListener();
+  }
+
+  setupPortfolioChangeListener() {
+    // Listen for portfolio changes from the portfolio manager
+    window.addEventListener('portfolioChanged', (event) => {
+      this.portfolioId = event.detail.portfolioId;
+      // Portfolio manager will handle reloading
+    });
   }
 
   initializeRealtime() {
@@ -97,6 +107,16 @@ class InvestmentApp {
     document.addEventListener('input', (e) => {
       if (e.target.id === 'stockSearch') {
         this.debounce(() => this.searchStocks(e.target.value), 500)();
+      }
+    });
+
+    // Portfolio selector
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'portfolioSelector') {
+        const newPortfolioId = e.target.value;
+        if (newPortfolioId && newPortfolioId !== this.portfolioId) {
+          portfolioManager.switchPortfolio(newPortfolioId);
+        }
       }
     });
   }
@@ -934,8 +954,19 @@ class InvestmentApp {
               <i class="fas fa-chart-line mr-2"></i>Investment Platform
             </h1>
             <div class="flex items-center gap-4">
+              <!-- Portfolio Selector -->
+              <div class="flex items-center gap-2">
+                <select id="portfolioSelector" 
+                        class="bg-white/20 text-white border border-white/30 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-white/50">
+                  <!-- Options will be populated by PortfolioManager -->
+                </select>
+                <button onclick="portfolioManager.showPortfolioList()"
+                        class="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded text-sm transition">
+                  <i class="fas fa-cog"></i> Manage
+                </button>
+              </div>
               <div class="text-sm">
-                <div>Portfolio: $<span id="headerValue">-</span></div>
+                <div>Value: $<span id="headerValue">-</span></div>
                 <div class="text-xs opacity-90" id="headerLastUpdate">
                   <i class="fas fa-clock"></i> Connecting...
                 </div>

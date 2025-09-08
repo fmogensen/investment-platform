@@ -194,6 +194,180 @@ app.post('/api/admin/test-api', async (c) => {
   }
 })
 
+// Portfolio CRUD Operations
+
+// Get all portfolios for the user
+app.get('/api/portfolios', async (c) => {
+  const { env } = c
+  
+  try {
+    const portfolios = await env.DB.prepare(`
+      SELECT p.*, 
+        COUNT(DISTINCT h.security_id) as holdings_count,
+        COALESCE(SUM(h.quantity * s.last_price), 0) as current_value,
+        COALESCE(SUM(h.quantity * h.average_cost), 0) as total_cost
+      FROM portfolios p
+      LEFT JOIN holdings h ON p.id = h.portfolio_id
+      LEFT JOIN securities s ON h.security_id = s.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `).all()
+    
+    return c.json({
+      portfolios: portfolios.results || [],
+      count: portfolios.results?.length || 0
+    })
+  } catch (error) {
+    console.error('Failed to fetch portfolios:', error)
+    return c.json({ error: 'Failed to fetch portfolios' }, 500)
+  }
+})
+
+// Create a new portfolio
+app.post('/api/portfolios', async (c) => {
+  const { env } = c
+  const { name, description } = await c.req.json()
+  
+  if (!name || name.trim() === '') {
+    return c.json({ error: 'Portfolio name is required' }, 400)
+  }
+  
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO portfolios (name, description, created_at, updated_at)
+      VALUES (?, ?, datetime('now'), datetime('now'))
+    `).bind(name.trim(), description || '').run()
+    
+    if (result.success && result.meta.last_row_id) {
+      const portfolio = await env.DB.prepare(`
+        SELECT * FROM portfolios WHERE id = ?
+      `).bind(result.meta.last_row_id).first()
+      
+      return c.json({ 
+        success: true, 
+        portfolio,
+        message: 'Portfolio created successfully'
+      })
+    }
+    
+    return c.json({ error: 'Failed to create portfolio' }, 500)
+  } catch (error) {
+    console.error('Failed to create portfolio:', error)
+    if (error.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'A portfolio with this name already exists' }, 409)
+    }
+    return c.json({ error: 'Failed to create portfolio' }, 500)
+  }
+})
+
+// Update a portfolio
+app.put('/api/portfolios/:id', async (c) => {
+  const { env } = c
+  const portfolioId = c.req.param('id')
+  const { name, description } = await c.req.json()
+  
+  if (!name || name.trim() === '') {
+    return c.json({ error: 'Portfolio name is required' }, 400)
+  }
+  
+  try {
+    // Check if portfolio exists
+    const existing = await env.DB.prepare(`
+      SELECT * FROM portfolios WHERE id = ?
+    `).bind(portfolioId).first()
+    
+    if (!existing) {
+      return c.json({ error: 'Portfolio not found' }, 404)
+    }
+    
+    // Prevent modification of default portfolio name
+    if (portfolioId === '1' && name !== 'Default Portfolio') {
+      return c.json({ error: 'Cannot rename the default portfolio' }, 403)
+    }
+    
+    const result = await env.DB.prepare(`
+      UPDATE portfolios 
+      SET name = ?, description = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(name.trim(), description || '', portfolioId).run()
+    
+    if (result.success) {
+      const portfolio = await env.DB.prepare(`
+        SELECT * FROM portfolios WHERE id = ?
+      `).bind(portfolioId).first()
+      
+      return c.json({ 
+        success: true, 
+        portfolio,
+        message: 'Portfolio updated successfully'
+      })
+    }
+    
+    return c.json({ error: 'Failed to update portfolio' }, 500)
+  } catch (error) {
+    console.error('Failed to update portfolio:', error)
+    if (error.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'A portfolio with this name already exists' }, 409)
+    }
+    return c.json({ error: 'Failed to update portfolio' }, 500)
+  }
+})
+
+// Delete a portfolio
+app.delete('/api/portfolios/:id', async (c) => {
+  const { env } = c
+  const portfolioId = c.req.param('id')
+  
+  // Prevent deletion of default portfolio
+  if (portfolioId === '1') {
+    return c.json({ error: 'Cannot delete the default portfolio' }, 403)
+  }
+  
+  try {
+    // Check if portfolio exists
+    const existing = await env.DB.prepare(`
+      SELECT * FROM portfolios WHERE id = ?
+    `).bind(portfolioId).first()
+    
+    if (!existing) {
+      return c.json({ error: 'Portfolio not found' }, 404)
+    }
+    
+    // Check if portfolio has holdings
+    const holdings = await env.DB.prepare(`
+      SELECT COUNT(*) as count FROM holdings WHERE portfolio_id = ?
+    `).bind(portfolioId).first()
+    
+    if (holdings.count > 0) {
+      return c.json({ 
+        error: 'Cannot delete portfolio with existing holdings. Please remove all holdings first.' 
+      }, 409)
+    }
+    
+    // Delete associated transactions first
+    await env.DB.prepare(`
+      DELETE FROM transactions WHERE portfolio_id = ?
+    `).bind(portfolioId).run()
+    
+    // Delete the portfolio
+    const result = await env.DB.prepare(`
+      DELETE FROM portfolios WHERE id = ?
+    `).bind(portfolioId).run()
+    
+    if (result.success) {
+      return c.json({ 
+        success: true, 
+        message: 'Portfolio deleted successfully'
+      })
+    }
+    
+    return c.json({ error: 'Failed to delete portfolio' }, 500)
+  } catch (error) {
+    console.error('Failed to delete portfolio:', error)
+    return c.json({ error: 'Failed to delete portfolio' }, 500)
+  }
+})
+
 // Get portfolio summary
 app.get('/api/portfolio/:id', async (c) => {
   const { env } = c
@@ -721,6 +895,7 @@ app.get('/', (c) => {
         <div id="app"></div>
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
         <script src="/static/realtime.js"></script>
+        <script src="/static/portfolio-manager.js"></script>
         <script src="/static/app.js"></script>
     </body>
     </html>
