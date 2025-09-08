@@ -154,17 +154,17 @@ class PortfolioManager {
             </div>
             <div class="flex space-x-2 ml-4">
               ${p.id != this.currentPortfolioId ? `
-                <button onclick="portfolioManager.switchPortfolio('${p.id}')"
+                <button onclick="portfolioManager.switchPortfolio(${p.id})"
                   class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
                   <i class="fas fa-exchange-alt"></i> Switch
                 </button>
               ` : ''}
-              <button onclick="portfolioManager.openEditModal('${p.id}')"
+              <button onclick="portfolioManager.openEditModal(${p.id})"
                 class="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm">
                 <i class="fas fa-edit"></i> Edit
               </button>
               ${p.id != 1 ? `
-                <button onclick="portfolioManager.deletePortfolio('${p.id}')"
+                <button onclick="portfolioManager.deletePortfolio(${p.id})"
                   class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm">
                   <i class="fas fa-trash"></i> Delete
                 </button>
@@ -254,7 +254,7 @@ class PortfolioManager {
   }
 
   async deletePortfolio(portfolioId) {
-    const portfolio = this.portfolios.find(p => p.id == portfolioId);
+    const portfolio = this.portfolios.find(p => p.id === portfolioId || p.id == portfolioId);
     if (!portfolio) return;
 
     if (!confirm(`Are you sure you want to delete "${portfolio.name}"? This action cannot be undone.`)) {
@@ -287,8 +287,8 @@ class PortfolioManager {
   }
 
   async switchPortfolio(portfolioId) {
-    this.currentPortfolioId = portfolioId;
-    localStorage.setItem('selectedPortfolioId', portfolioId);
+    this.currentPortfolioId = String(portfolioId);
+    localStorage.setItem('selectedPortfolioId', String(portfolioId));
     
     // Update the selector if it exists
     this.updatePortfolioSelector();
