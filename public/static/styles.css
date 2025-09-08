@@ -105,3 +105,41 @@
   max-height: 90vh;
   overflow-y: auto;
 }
+
+.update-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: #f3f4f6;
+  font-size: 0.875rem;
+}
+
+.update-indicator.updating {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.update-indicator.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.update-indicator.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse-animation {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

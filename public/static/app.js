@@ -10,6 +10,8 @@ class InvestmentApp {
     this.selectedStock = null;
     this.priceUpdateInterval = null;
     this.charts = {};
+    this.lastUpdateTime = null;
+    this.updateInProgress = false;
     
     this.init();
   }
@@ -157,19 +159,135 @@ class InvestmentApp {
   }
 
   async updatePrices() {
+    if (this.updateInProgress) return; // Prevent concurrent updates
+    
+    this.updateInProgress = true;
+    this.updateStatusIndicator('updating');
+    
     try {
-      await axios.post('/api/update-prices');
-      this.loadPortfolio();
+      const response = await axios.post('/api/update-prices');
+      if (response.data.success) {
+        this.lastUpdateTime = new Date();
+        this.updateLastUpdateDisplay();
+        await this.loadPortfolio();
+        this.updateStatusIndicator('success');
+      } else {
+        this.updateStatusIndicator('error');
+      }
     } catch (error) {
       console.error('Failed to update prices:', error);
+      this.updateStatusIndicator('error');
+    } finally {
+      this.updateInProgress = false;
+    }
+  }
+
+  updateStatusIndicator(status) {
+    // Update portfolio view indicator
+    const indicator = document.getElementById('updateStatus');
+    if (indicator) {
+      switch(status) {
+        case 'updating':
+          indicator.innerHTML = '<i class="fas fa-sync-alt fa-spin text-blue-600"></i> Updating prices...';
+          break;
+        case 'success':
+          indicator.innerHTML = '<i class="fas fa-check-circle text-green-600"></i> Updated';
+          setTimeout(() => {
+            if (indicator) indicator.innerHTML = '';
+          }, 3000);
+          break;
+        case 'error':
+          indicator.innerHTML = '<i class="fas fa-exclamation-circle text-red-600"></i> Update failed';
+          setTimeout(() => {
+            if (indicator) indicator.innerHTML = '';
+          }, 5000);
+          break;
+      }
+    }
+    
+    // Update header indicator
+    const headerIndicator = document.getElementById('headerUpdateIndicator');
+    if (headerIndicator) {
+      headerIndicator.className = 'update-indicator';
+      switch(status) {
+        case 'updating':
+          headerIndicator.classList.add('updating');
+          headerIndicator.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i><span>Updating...</span>';
+          break;
+        case 'success':
+          headerIndicator.classList.add('success');
+          headerIndicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Updated</span>';
+          setTimeout(() => {
+            if (headerIndicator) {
+              headerIndicator.className = 'update-indicator';
+              headerIndicator.innerHTML = '<i class="fas fa-sync-alt"></i><span>Auto-update ON</span>';
+            }
+          }, 3000);
+          break;
+        case 'error':
+          headerIndicator.classList.add('error');
+          headerIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>Update failed</span>';
+          setTimeout(() => {
+            if (headerIndicator) {
+              headerIndicator.className = 'update-indicator';
+              headerIndicator.innerHTML = '<i class="fas fa-sync-alt"></i><span>Auto-update ON</span>';
+            }
+          }, 5000);
+          break;
+      }
+    }
+  }
+
+  updateLastUpdateDisplay() {
+    // Update portfolio view
+    const element = document.getElementById('lastUpdate');
+    if (element && this.lastUpdateTime) {
+      const timeStr = this.lastUpdateTime.toLocaleTimeString();
+      const secondsAgo = Math.floor((Date.now() - this.lastUpdateTime) / 1000);
+      
+      if (secondsAgo < 60) {
+        element.innerHTML = `<i class="fas fa-clock text-gray-500"></i> Last updated: just now`;
+      } else {
+        const minutesAgo = Math.floor(secondsAgo / 60);
+        element.innerHTML = `<i class="fas fa-clock text-gray-500"></i> Last updated: ${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago`;
+      }
+    }
+    
+    // Update header
+    const headerElement = document.getElementById('headerLastUpdate');
+    if (headerElement && this.lastUpdateTime) {
+      const timeStr = this.lastUpdateTime.toLocaleTimeString();
+      const secondsAgo = Math.floor((Date.now() - this.lastUpdateTime) / 1000);
+      
+      if (secondsAgo < 60) {
+        headerElement.innerHTML = `<i class="fas fa-check-circle"></i> Updated ${timeStr}`;
+      } else {
+        const minutesAgo = Math.floor(secondsAgo / 60);
+        headerElement.innerHTML = `<i class="fas fa-clock"></i> Updated ${minutesAgo}m ago`;
+      }
+      
+      // Add visual warning if data is stale (> 5 minutes)
+      if (secondsAgo > 300) {
+        headerElement.classList.add('pulse-animation');
+      } else {
+        headerElement.classList.remove('pulse-animation');
+      }
     }
   }
 
   startPriceUpdates() {
+    // Initial update
+    this.updatePrices();
+    
     // Update prices every 60 seconds
     this.priceUpdateInterval = setInterval(() => {
       this.updatePrices();
     }, 60000);
+    
+    // Update the "last updated" display every 10 seconds
+    setInterval(() => {
+      this.updateLastUpdateDisplay();
+    }, 10000);
   }
 
   stopPriceUpdates() {
@@ -210,9 +328,7 @@ class InvestmentApp {
       case 'addToWatchlist':
         this.showWatchlistModal(data.symbol);
         break;
-      case 'refresh':
-        this.updatePrices();
-        break;
+
     }
   }
 
@@ -554,10 +670,13 @@ class InvestmentApp {
         <!-- Holdings -->
         <div class="bg-white rounded-lg shadow-lg p-6">
           <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold">Holdings</h3>
-            <button data-action="refresh" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-              <i class="fas fa-sync-alt mr-2"></i>Update Prices
-            </button>
+            <div>
+              <h3 class="text-xl font-bold">Holdings</h3>
+              <div class="flex items-center gap-4 mt-1">
+                <span id="lastUpdate" class="text-sm text-gray-600"></span>
+                <span id="updateStatus" class="text-sm"></span>
+              </div>
+            </div>
           </div>
           
           ${holdings && holdings.length > 0 ? `
@@ -765,9 +884,17 @@ class InvestmentApp {
             <h1 class="text-2xl font-bold">
               <i class="fas fa-chart-line mr-2"></i>Investment Platform
             </h1>
-            <div class="text-sm">
-              <span class="mr-4">Portfolio Value: $<span id="headerValue">-</span></span>
-              <span id="headerTime">${new Date().toLocaleTimeString()}</span>
+            <div class="flex items-center gap-4">
+              <div class="text-sm">
+                <div>Portfolio: $<span id="headerValue">-</span></div>
+                <div class="text-xs opacity-90" id="headerLastUpdate">
+                  <i class="fas fa-clock"></i> Waiting for update...
+                </div>
+              </div>
+              <div id="headerUpdateIndicator" class="update-indicator">
+                <i class="fas fa-sync-alt"></i>
+                <span>Auto-update ON</span>
+              </div>
             </div>
           </div>
         </div>
@@ -820,10 +947,10 @@ class InvestmentApp {
       <!-- Footer -->
       <footer class="bg-gray-800 text-white py-4 mt-12">
         <div class="container mx-auto px-4 text-center">
-          <p class="text-sm">Investment Platform © 2024 | Real-time data from Alpha Vantage</p>
+          <p class="text-sm">Investment Platform © 2024 | Real-time market data</p>
           <p class="text-xs text-gray-400 mt-1">
-            <i class="fas fa-info-circle mr-1"></i>
-            Prices update every 60 seconds during market hours
+            <i class="fas fa-sync-alt mr-1"></i>
+            Automatic price updates every 60 seconds
           </p>
         </div>
       </footer>
@@ -834,13 +961,8 @@ class InvestmentApp {
       document.getElementById('headerValue').textContent = this.portfolio.summary.totalValue.toFixed(2);
     }
     
-    // Update time
-    setInterval(() => {
-      const timeEl = document.getElementById('headerTime');
-      if (timeEl) {
-        timeEl.textContent = new Date().toLocaleTimeString();
-      }
-    }, 1000);
+    // Update last update display immediately
+    this.updateLastUpdateDisplay();
   }
 }
 
