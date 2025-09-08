@@ -436,6 +436,66 @@ class DashboardLayout {
           padding: 1.25rem;
         }
 
+        /* Real-time Indicator */
+        .realtime-indicator {
+          display: flex;
+          align-items: center;
+          font-size: 0.75rem;
+        }
+        
+        .realtime-indicator.connecting {
+          color: #f59e0b;
+        }
+        
+        .realtime-indicator.connected {
+          color: #10b981;
+        }
+        
+        .realtime-indicator.error {
+          color: #ef4444;
+        }
+        
+        /* Portfolio Value in Header */
+        #headerPortfolioValue {
+          transition: all 0.3s;
+        }
+        
+        #headerPortfolioChange {
+          font-size: 0.875rem;
+        }
+        
+        #headerPortfolioChange.positive {
+          color: #10b981;
+        }
+        
+        #headerPortfolioChange.negative {
+          color: #ef4444;
+        }
+        
+        /* Nav Section */
+        .nav-section {
+          margin-bottom: 0.5rem;
+        }
+        
+        .sidebar.collapsed .nav-section {
+          padding: 0.5rem;
+        }
+        
+        .sidebar.collapsed .nav-section .text-xs,
+        .sidebar.collapsed .nav-section select,
+        .sidebar.collapsed .nav-section button span {
+          display: none;
+        }
+        
+        .sidebar.collapsed .nav-section button {
+          padding: 0.5rem;
+          justify-content: center;
+        }
+        
+        .sidebar.collapsed .nav-section button i {
+          margin-right: 0;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
           .sidebar {
@@ -525,6 +585,19 @@ class DashboardLayout {
           </div>
           
           <nav class="sidebar-nav">
+            <!-- Portfolio Selector Section -->
+            <div class="nav-section" style="padding: 0.75rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+              <div class="text-xs text-gray-400 uppercase tracking-wider mb-2 px-1">Active Portfolio</div>
+              <select id="portfolioSelector" 
+                      class="w-full bg-white/10 text-white border border-white/20 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <!-- Options will be populated by PortfolioManager -->
+              </select>
+              <button onclick="portfolioManager.showPortfolioList()"
+                      class="w-full mt-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-1.5 rounded text-sm transition flex items-center justify-center">
+                <i class="fas fa-folder-plus mr-2"></i> Manage Portfolios
+              </button>
+            </div>
+            
             <div class="nav-item">
               <a href="#" class="nav-link active" data-view="portfolio">
                 <i class="fas fa-briefcase"></i>
@@ -580,19 +653,23 @@ class DashboardLayout {
                 <span class="breadcrumb-separator">/</span>
                 <span class="breadcrumb-item" id="currentPage">Portfolio</span>
               </nav>
+              <div class="ml-6 hidden md:flex items-center gap-3">
+                <div class="text-sm">
+                  <span class="text-gray-500 dark:text-gray-400">Portfolio Value:</span>
+                  <span class="font-bold text-lg ml-2" id="headerPortfolioValue">$0.00</span>
+                </div>
+                <div class="text-sm" id="headerPortfolioChange">
+                  <!-- Will be updated dynamically -->
+                </div>
+              </div>
             </div>
             
             <div class="header-right">
-              <!-- Portfolio Selector -->
-              <select id="portfolioSelector" 
-                      class="bg-transparent border border-gray-300 dark:border-gray-600 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <!-- Options will be populated by PortfolioManager -->
-              </select>
-              
-              <button onclick="portfolioManager.showPortfolioList()"
-                      class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition">
-                <i class="fas fa-folder-plus"></i> Manage
-              </button>
+              <!-- Real-time Status -->
+              <div id="realtimeStatus" class="realtime-indicator connecting text-sm px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800">
+                <i class="fas fa-satellite-dish mr-1"></i> 
+                <span class="status-text">Connecting...</span>
+              </div>
               
               <!-- Theme Toggle -->
               <div class="theme-toggle" onclick="dashboardLayout.toggleTheme()">

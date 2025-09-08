@@ -38,6 +38,9 @@ class InvestmentApp {
     // Initialize real-time market data connection
     this.realtimeData = new RealtimeMarketData();
     
+    // Update status to connecting
+    this.updateRealtimeStatus('connecting');
+    
     // Register callback for real-time updates
     this.realtimeData.onQuoteUpdate((symbol, quote) => {
       this.handleRealtimeQuote(symbol, quote);
@@ -52,7 +55,31 @@ class InvestmentApp {
     }, 1000);
   }
 
+  updateRealtimeStatus(status) {
+    const indicator = document.getElementById('realtimeStatus');
+    if (indicator) {
+      indicator.className = `realtime-indicator ${status} text-sm px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800`;
+      const statusText = indicator.querySelector('.status-text');
+      if (statusText) {
+        switch(status) {
+          case 'connected':
+            statusText.textContent = 'Live';
+            break;
+          case 'connecting':
+            statusText.textContent = 'Connecting...';
+            break;
+          case 'error':
+            statusText.textContent = 'Offline';
+            break;
+        }
+      }
+    }
+  }
+
   handleRealtimeQuote(symbol, quote) {
+    // Update connection status
+    this.updateRealtimeStatus('connected');
+    
     // Update portfolio if we have holdings for this symbol
     if (this.portfolio?.holdings) {
       const holding = this.portfolio.holdings.find(h => h.symbol === symbol);
@@ -138,9 +165,32 @@ class InvestmentApp {
       const response = await axios.get(`/api/portfolio/${this.portfolioId}`);
       this.portfolio = response.data;
       this.updatePortfolioView();
+      this.updateHeaderPortfolioValue();
     } catch (error) {
       console.error('Failed to load portfolio:', error);
       this.showNotification('Failed to load portfolio', 'error');
+    }
+  }
+  
+  updateHeaderPortfolioValue() {
+    if (!this.portfolio?.summary) return;
+    
+    const { summary } = this.portfolio;
+    const valueElement = document.getElementById('headerPortfolioValue');
+    const changeElement = document.getElementById('headerPortfolioChange');
+    
+    if (valueElement) {
+      valueElement.textContent = `$${summary.totalValue.toFixed(2)}`;
+    }
+    
+    if (changeElement) {
+      const changeClass = summary.totalGainLoss >= 0 ? 'positive' : 'negative';
+      changeElement.className = `text-sm ${changeClass}`;
+      changeElement.innerHTML = `
+        <span>${summary.totalGainLoss >= 0 ? '↑' : '↓'} 
+        ${summary.totalGainLoss >= 0 ? '+' : ''}$${Math.abs(summary.totalGainLoss).toFixed(2)} 
+        (${summary.totalGainLossPercent >= 0 ? '+' : ''}${summary.totalGainLossPercent.toFixed(2)}%)</span>
+      `;
     }
   }
 
