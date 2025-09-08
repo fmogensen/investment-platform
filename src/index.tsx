@@ -891,10 +891,12 @@ app.get('/', (c) => {
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <link href="/static/styles.css" rel="stylesheet">
     </head>
-    <body class="bg-gray-50">
+    <body>
         <div id="app"></div>
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="/static/realtime.js"></script>
+        <script src="/static/dashboard.js"></script>
         <script src="/static/portfolio-manager.js"></script>
         <script src="/static/app.js"></script>
     </body>

@@ -144,6 +144,61 @@ class InvestmentApp {
     }
   }
 
+  async loadTransactions() {
+    try {
+      const response = await axios.get(`/api/transactions/${this.portfolioId}`);
+      const transactions = response.data.transactions || [];
+      
+      const content = document.getElementById('content');
+      content.innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <h2 class="text-2xl font-bold mb-4">Transaction History</h2>
+            ${transactions.length > 0 ? `
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead>
+                    <tr class="border-b">
+                      <th class="text-left py-2">Date</th>
+                      <th class="text-left py-2">Type</th>
+                      <th class="text-left py-2">Symbol</th>
+                      <th class="text-right py-2">Quantity</th>
+                      <th class="text-right py-2">Price</th>
+                      <th class="text-right py-2">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${transactions.map(t => `
+                      <tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="py-3">${new Date(t.created_at).toLocaleDateString()}</td>
+                        <td class="py-3">
+                          <span class="px-2 py-1 rounded text-xs font-semibold ${
+                            t.type === 'BUY' ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100' : 
+                            'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100'
+                          }">
+                            ${t.type}
+                          </span>
+                        </td>
+                        <td class="py-3 font-semibold">${t.symbol}</td>
+                        <td class="py-3 text-right">${t.quantity}</td>
+                        <td class="py-3 text-right">$${t.price.toFixed(2)}</td>
+                        <td class="py-3 text-right font-semibold">$${t.total_amount.toFixed(2)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : `
+              <p class="text-gray-500 text-center py-8">No transactions yet.</p>
+            `}
+          </div>
+        </div>
+      `;
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    }
+  }
+
   async loadWatchlist() {
     try {
       const response = await axios.get('/api/watchlist');
@@ -367,7 +422,36 @@ class InvestmentApp {
 
   switchView(view) {
     this.currentView = view;
-    this.render();
+    
+    // Update content area based on view
+    const content = document.getElementById('content');
+    if (!content) return;
+    
+    // Show search bar for search view
+    if (view === 'search') {
+      content.innerHTML = `
+        <div class="card">
+          <div class="card-body">
+            <h2 class="text-2xl font-bold mb-4">Search Stocks & ETFs</h2>
+            <div class="relative">
+              <input type="text" id="stockSearch" 
+                     class="w-full px-4 py-3 pr-10 border rounded-lg focus:outline-none focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+                     placeholder="Enter stock symbol or company name...">
+              <i class="fas fa-search absolute right-3 top-4 text-gray-400"></i>
+            </div>
+          </div>
+        </div>
+        <div id="searchResults"></div>
+      `;
+      
+      // Re-bind search input event
+      document.getElementById('stockSearch')?.addEventListener('input', (e) => {
+        this.debounce(() => this.searchStocks(e.target.value), 500)();
+      });
+      document.getElementById('stockSearch')?.focus();
+    } else {
+      content.innerHTML = '<div class="text-center py-8">Loading...</div>';
+    }
     
     // Load data for the view
     switch(view) {
@@ -377,8 +461,14 @@ class InvestmentApp {
       case 'watchlist':
         this.loadWatchlist();
         break;
-      case 'search':
-        document.getElementById('stockSearch')?.focus();
+      case 'transactions':
+        this.loadTransactions();
+        break;
+      case 'analytics':
+        this.showAnalytics();
+        break;
+      case 'settings':
+        this.showSettings();
         break;
     }
   }
@@ -710,7 +800,8 @@ class InvestmentApp {
     content.innerHTML = `
       <div class="space-y-6">
         <!-- Portfolio Summary -->
-        <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="card">
+          <div class="card-body">
           <h2 class="text-2xl font-bold mb-4">${portfolio.name}</h2>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
@@ -734,10 +825,12 @@ class InvestmentApp {
               </p>
             </div>
           </div>
+          </div>
         </div>
         
         <!-- Holdings -->
-        <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="card">
+          <div class="card-body">
           <div class="flex justify-between items-center mb-4">
             <div>
               <h3 class="text-xl font-bold">Holdings</h3>
@@ -799,13 +892,16 @@ class InvestmentApp {
           ` : `
             <p class="text-gray-500 text-center py-8">No holdings yet. Start by searching and buying stocks!</p>
           `}
+          </div>
         </div>
         
         <!-- Portfolio Chart -->
-        <div class="bg-white rounded-lg shadow-lg p-6">
-          <h3 class="text-xl font-bold mb-4">Portfolio Allocation</h3>
-          <div class="chart-container">
-            <canvas id="portfolioChart"></canvas>
+        <div class="card">
+          <div class="card-body">
+            <h3 class="text-xl font-bold mb-4">Portfolio Allocation</h3>
+            <div class="chart-container">
+              <canvas id="portfolioChart"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -910,6 +1006,92 @@ class InvestmentApp {
     `;
   }
 
+  showAnalytics() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+      <div class="card">
+        <div class="card-body">
+          <h2 class="text-2xl font-bold mb-4">Portfolio Analytics</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 class="text-lg font-semibold mb-2">Performance Metrics</h3>
+              <div class="space-y-2">
+                <div class="flex justify-between">
+                  <span>Total Return</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Daily Change</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Weekly Change</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold mb-2">Risk Analysis</h3>
+              <div class="space-y-2">
+                <div class="flex justify-between">
+                  <span>Portfolio Beta</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Volatility</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Sharpe Ratio</span>
+                  <span class="font-semibold">Coming Soon</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  showSettings() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+      <div class="card">
+        <div class="card-body">
+          <h2 class="text-2xl font-bold mb-4">Settings</h2>
+          <div class="space-y-6">
+            <div>
+              <h3 class="text-lg font-semibold mb-3">Display Preferences</h3>
+              <div class="space-y-3">
+                <label class="flex items-center justify-between">
+                  <span>Show percentage changes</span>
+                  <input type="checkbox" checked class="toggle">
+                </label>
+                <label class="flex items-center justify-between">
+                  <span>Enable real-time updates</span>
+                  <input type="checkbox" checked class="toggle">
+                </label>
+              </div>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold mb-3">Notifications</h3>
+              <div class="space-y-3">
+                <label class="flex items-center justify-between">
+                  <span>Price alerts</span>
+                  <input type="checkbox" class="toggle">
+                </label>
+                <label class="flex items-center justify-between">
+                  <span>Daily summary</span>
+                  <input type="checkbox" class="toggle">
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   updateSearchResults() {
     const resultsDiv = document.getElementById('searchResults');
     if (!resultsDiv) return;
@@ -947,105 +1129,9 @@ class InvestmentApp {
   }
 
   render() {
-    const app = document.getElementById('app');
-    
-    app.innerHTML = `
-      <!-- Header -->
-      <header class="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
-        <div class="container mx-auto px-4 py-4">
-          <div class="flex justify-between items-center">
-            <h1 class="text-2xl font-bold">
-              <i class="fas fa-chart-line mr-2"></i>Investment Platform
-            </h1>
-            <div class="flex items-center gap-4">
-              <!-- Portfolio Selector -->
-              <div class="flex items-center gap-2">
-                <select id="portfolioSelector" 
-                        class="bg-white/20 text-white border border-white/30 rounded px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-white/50">
-                  <!-- Options will be populated by PortfolioManager -->
-                </select>
-                <button onclick="portfolioManager.showPortfolioList()"
-                        class="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded text-sm transition">
-                  <i class="fas fa-cog"></i> Manage
-                </button>
-              </div>
-              <div class="text-sm">
-                <div>Value: $<span id="headerValue">-</span></div>
-                <div class="text-xs opacity-90" id="headerLastUpdate">
-                  <i class="fas fa-clock"></i> Connecting...
-                </div>
-              </div>
-              <div id="realtimeStatus" class="realtime-indicator connecting">
-                <i class="fas fa-satellite-dish"></i> Connecting...
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-      
-      <!-- Navigation -->
-      <nav class="bg-white shadow-md sticky top-0 z-40">
-        <div class="container mx-auto px-4">
-          <div class="flex space-x-8">
-            <button data-view="portfolio" 
-                    class="py-3 px-4 hover:text-blue-600 ${this.currentView === 'portfolio' ? 'tab-active' : ''}">
-              <i class="fas fa-briefcase mr-2"></i>Portfolio
-            </button>
-            <button data-view="search" 
-                    class="py-3 px-4 hover:text-blue-600 ${this.currentView === 'search' ? 'tab-active' : ''}">
-              <i class="fas fa-search mr-2"></i>Search
-            </button>
-            <button data-view="watchlist" 
-                    class="py-3 px-4 hover:text-blue-600 ${this.currentView === 'watchlist' ? 'tab-active' : ''}">
-              <i class="fas fa-star mr-2"></i>Watchlist
-            </button>
-            <button data-view="transactions" 
-                    class="py-3 px-4 hover:text-blue-600 ${this.currentView === 'transactions' ? 'tab-active' : ''}">
-              <i class="fas fa-history mr-2"></i>Transactions
-            </button>
-          </div>
-        </div>
-      </nav>
-      
-      <!-- Main Content -->
-      <main class="container mx-auto px-4 py-8">
-        ${this.currentView === 'search' ? `
-          <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h2 class="text-2xl font-bold mb-4">Search Stocks & ETFs</h2>
-            <div class="relative">
-              <input type="text" id="stockSearch" 
-                     class="w-full px-4 py-3 pr-10 border rounded-lg focus:outline-none focus:border-blue-500"
-                     placeholder="Enter stock symbol or company name...">
-              <i class="fas fa-search absolute right-3 top-4 text-gray-400"></i>
-            </div>
-          </div>
-          <div id="searchResults"></div>
-        ` : ''}
-        
-        <div id="content" class="fade-in">
-          <!-- Dynamic content will be loaded here -->
-        </div>
-      </main>
-      
-      <!-- Footer -->
-      <footer class="bg-gray-800 text-white py-4 mt-12">
-        <div class="container mx-auto px-4 text-center">
-          <p class="text-sm">Investment Platform © 2024 | Real-time market data</p>
-          <p class="text-xs text-gray-400 mt-1">
-            <i class="fas fa-sync-alt mr-1"></i>
-            Automatic price updates every 60 seconds
-          </p>
-        </div>
-      </footer>
-    `;
-    
-    // Update header value
-    if (this.portfolio?.summary) {
-      document.getElementById('headerValue').textContent = this.portfolio.summary.totalValue.toFixed(2);
-    }
-    
-    // Update last update display immediately
-    this.updateLastUpdateDisplay();
+    // The dashboard layout is now handled by dashboard.js
+    // This method now only needs to handle the initial content rendering
+    this.switchView(this.currentView);
   }
 }
 
