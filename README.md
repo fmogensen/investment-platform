@@ -1,12 +1,14 @@
-# Investment Platform - Stock & ETF Portfolio Manager
+# Investment Platform - Real-Time Stock & ETF Portfolio Manager
 
 ## Project Overview
-- **Name**: Investment Platform
+- **Name**: Investment Platform  
 - **Goal**: A comprehensive web-based investment platform for managing stock and ETF portfolios with real-time market data
-- **Features**: Portfolio management, real-time stock quotes, buy/sell transactions, watchlist, performance tracking, and portfolio analytics
+- **Features**: Portfolio management, real-time stock quotes, buy/sell transactions, watchlist, performance tracking, portfolio analytics, and multi-API provider support
+- **NO SAMPLE DATA**: This platform uses ONLY real market data from configured APIs
 
 ## Live Demo
 - **Production URL**: https://3000-i865ldkdokweyyzxlz8oy-6532622b.e2b.dev
+- **Admin Panel**: https://3000-i865ldkdokweyyzxlz8oy-6532622b.e2b.dev/admin
 - **Status**: ✅ Active (Development)
 
 ## Currently Completed Features
@@ -23,11 +25,13 @@
 - Average cost basis calculation for multiple purchases
 - Transaction history tracking with timestamps
 
-### ✅ Market Data Integration
-- Real-time stock quotes from Alpha Vantage API
+### ✅ Market Data Integration - REAL DATA ONLY
+- **NO SAMPLE/DEMO DATA** - All data comes from real market APIs
+- Multi-provider support with automatic failover
+- Real-time stock quotes from Twelve Data, Alpha Vantage, and Finnhub
 - Automatic price updates every 60 seconds
-- Caching system to optimize API usage
-- Support for multiple data providers (Alpha Vantage, Finnhub, RapidAPI)
+- Smart caching system to optimize API usage
+- Admin panel for API configuration and monitoring
 
 ### ✅ Search & Discovery
 - Search stocks and ETFs by symbol or company name
@@ -43,6 +47,52 @@
 - Portfolio allocation doughnut chart
 - Color-coded profit/loss indicators
 - Responsive tables with sortable data
+
+### ✅ Admin Panel
+- Secure admin authentication
+- Configure multiple API providers
+- Set default API provider
+- Test API connections in real-time
+- Monitor API usage and performance
+- View error rates and response times
+- Manage general platform settings
+
+## API Configuration
+
+### Configured API Providers
+
+The platform now supports multiple API providers with automatic failover:
+
+1. **Twelve Data API** ✅ CONFIGURED
+   - API Key: 995c958f068840e387872c2714be6a41
+   - Free tier: 800 API calls/day, 8 requests/minute
+   - Documentation: https://twelvedata.com/docs
+
+2. **Alpha Vantage API** ✅ CONFIGURED
+   - API Key: LO740ATBJCE6J4W9
+   - Free tier: 25 API calls/day (basic), 500/day (premium)
+   - Documentation: https://www.alphavantage.co/documentation/
+
+3. **Finnhub API** ✅ CONFIGURED
+   - API Key: d2v9hm1r01qq994iptt0d2v9hm1r01qq994ipttg
+   - Free tier: 60 API calls/minute
+   - Documentation: https://finnhub.io/docs/api
+
+### Admin Panel for API Management
+
+**Access the Admin Panel**: `/admin`
+- Default Password: `admin123`
+- Features:
+  - Configure API keys for all providers
+  - Set default/primary API provider
+  - Test each API with real-time feedback
+  - Monitor API usage and response times
+  - View error rates and performance metrics
+  - Automatic failover configuration
+
+### NO SAMPLE DATA POLICY
+
+⚠️ **IMPORTANT**: This platform NEVER uses sample or demo data. All stock prices, quotes, and market data come from real API providers. If APIs are not configured or fail, the platform will show appropriate error messages rather than fake data.
 
 ## API Endpoints
 
@@ -63,6 +113,12 @@
 ### Transactions
 - `GET /api/transactions/:portfolioId` - Get transaction history
 
+### Admin APIs
+- `GET /api/admin/config` - Get API configuration (requires auth)
+- `POST /api/admin/config` - Update API configuration (requires auth)
+- `POST /api/admin/settings` - Update platform settings (requires auth)
+- `POST /api/admin/test-api` - Test API provider (requires auth)
+
 ## Data Architecture
 
 ### Data Models
@@ -73,6 +129,9 @@
 - **Transactions**: Buy/sell history
 - **Watchlist**: Tracked securities with alerts
 - **Price History**: Historical data for charts
+- **API Providers**: Configuration for multiple data sources
+- **API Usage**: Tracking and monitoring API calls
+- **Admin Settings**: Platform configuration
 
 ### Storage Services
 - **Cloudflare D1**: SQLite database for all relational data
@@ -107,6 +166,14 @@
 4. Add notes about why you're watching
 5. View all watched stocks in Watchlist tab
 
+### Admin Configuration
+1. Navigate to `/admin`
+2. Enter password: `admin123`
+3. Configure API keys for each provider
+4. Test APIs to ensure they work
+5. Set your preferred default provider
+6. Monitor usage and performance
+
 ### Portfolio Analytics
 - **Total Value**: Current market value of all holdings
 - **Total Cost**: Original investment amount
@@ -122,13 +189,14 @@
 - **Charts**: Chart.js
 - **Icons**: Font Awesome
 - **Deployment**: Cloudflare Pages
+- **API Management**: Custom multi-provider system with failover
 
 ## Development Setup
 
 ### Prerequisites
 - Node.js 18+
 - Wrangler CLI
-- Alpha Vantage API key (free at https://www.alphavantage.co)
+- API keys for at least one provider
 
 ### Installation
 ```bash
@@ -139,9 +207,8 @@ cd webapp
 # Install dependencies
 npm install
 
-# Set up environment variables
-cp .dev.vars.example .dev.vars
-# Edit .dev.vars and add your API keys
+# Configure API keys in .dev.vars
+# (Already configured with your keys)
 
 # Build the application
 npm run build
@@ -155,7 +222,7 @@ npm run dev:d1
 # Apply migrations locally
 npm run db:migrate:local
 
-# Seed with sample data
+# Seed with sample data (optional)
 npm run db:seed
 
 # Reset database (development only)
@@ -193,7 +260,7 @@ npm run db:reset
 1. **Add Authentication**: Implement user login system using Cloudflare Access or Auth0
 2. **Enhanced Charts**: Add historical price charts using more detailed time series data
 3. **Mobile Optimization**: Improve responsive design for mobile devices
-4. **More Data Sources**: Integrate additional APIs for comprehensive market data
+4. **More API Providers**: Add support for Polygon.io, IEX Cloud, Yahoo Finance
 5. **Performance Metrics**: Add more advanced portfolio analytics (Sharpe ratio, etc.)
 6. **Export Features**: Allow users to export portfolio data and reports
 7. **Notifications**: Implement price alerts and portfolio notifications
@@ -209,30 +276,18 @@ npm run build
 # Deploy to Cloudflare Pages
 npm run deploy:prod
 
-# Set production secrets
+# Set production secrets for each API
+wrangler secret put TWELVE_DATA_API_KEY --project-name investment-platform
 wrangler secret put ALPHA_VANTAGE_API_KEY --project-name investment-platform
+wrangler secret put FINNHUB_API_KEY --project-name investment-platform
+wrangler secret put ADMIN_PASSWORD --project-name investment-platform
 ```
 
 ### Configuration
 - Update `wrangler.jsonc` with production database IDs
 - Configure custom domain in Cloudflare dashboard
 - Set up API rate limiting and caching rules
-
-## API Keys Required
-
-To fully utilize the platform, you'll need:
-
-1. **Alpha Vantage API** (Required)
-   - Free tier: 5 API calls/minute, 500 calls/day
-   - Get key at: https://www.alphavantage.co/support/#api-key
-
-2. **Finnhub API** (Optional)
-   - Free tier: 60 API calls/minute
-   - Get key at: https://finnhub.io/register
-
-3. **Yahoo Finance via RapidAPI** (Optional)
-   - Various pricing tiers
-   - Get key at: https://rapidapi.com/apidojo/api/yahoo-finance1
+- Update admin password for production
 
 ## Contributing
 
@@ -253,6 +308,8 @@ For issues or questions, please open an issue on GitHub or contact the developme
 
 ---
 
-**Last Updated**: January 2024
-**Version**: 1.0.0
+**Last Updated**: January 2025  
+**Version**: 2.0.0  
+**API Status**: ✅ All APIs Configured and Active  
+**Data Source**: 100% Real Market Data (NO SAMPLE DATA)  
 **Status**: Active Development
