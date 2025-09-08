@@ -1,13 +1,19 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
+import { APIManager } from './api-manager'
 
 type Bindings = {
   DB: D1Database
   CACHE: KVNamespace
+  ALPHA_VANTAGE_API_KEY: string
+  FINNHUB_API_KEY: string
   TWELVE_DATA_API_KEY: string
-  FINNHUB_API_KEY?: string
   RAPIDAPI_KEY?: string
+  POLYGON_API_KEY?: string
+  IEX_CLOUD_API_KEY?: string
+  ADMIN_PASSWORD: string
+  DEFAULT_API_PROVIDER: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -18,104 +24,174 @@ app.use('/api/*', cors())
 // Serve static files
 app.use('/static/*', serveStatic({ root: './public' }))
 
-// Helper function to fetch stock data using Twelve Data API
-async function fetchStockData(symbol: string, env: Bindings): Promise<any> {
-  const cacheKey = `stock:${symbol}`
-  const cached = await env.CACHE.get(cacheKey, 'json')
-  
-  if (cached && Date.now() - cached.timestamp < 60000) { // 1 minute cache
-    return cached.data
-  }
-
-  try {
-    // Using Twelve Data API for real-time quotes
-    const response = await fetch(
-      `https://api.twelvedata.com/quote?symbol=${symbol}&apikey=${env.TWELVE_DATA_API_KEY}`
-    )
-    const data = await response.json()
-    
-    if (data && data.symbol && !data.code) {
-      const stockData = {
-        symbol: data.symbol,
-        name: data.name || symbol,
-        price: parseFloat(data.close || data.price || 0),
-        change: parseFloat(data.change || 0),
-        changePercent: data.percent_change || '0%',
-        volume: parseInt(data.volume || 0),
-        latestTradingDay: data.datetime || new Date().toISOString().split('T')[0],
-        previousClose: parseFloat(data.previous_close || 0),
-        open: parseFloat(data.open || 0),
-        high: parseFloat(data.high || 0),
-        low: parseFloat(data.low || 0),
-        exchange: data.exchange,
-        currency: data.currency
-      }
-      
-      await env.CACHE.put(cacheKey, JSON.stringify({
-        data: stockData,
-        timestamp: Date.now()
-      }), { expirationTtl: 300 }) // 5 minutes TTL
-      
-      return stockData
-    }
-  } catch (error) {
-    console.error('Error fetching stock data from Twelve Data:', error)
-  }
-  
-  // Fallback to demo data if API fails
-  const demoData: Record<string, any> = {
-    'AAPL': { price: 195.89, change: 2.45, changePercent: '1.27%', open: 193.50, high: 196.20, low: 193.30, volume: 54233421, previousClose: 193.44 },
-    'MSFT': { price: 415.26, change: -3.18, changePercent: '-0.76%', open: 418.50, high: 419.00, low: 414.80, volume: 21456789, previousClose: 418.44 },
-    'GOOGL': { price: 139.52, change: 1.23, changePercent: '0.89%', open: 138.30, high: 140.10, low: 138.00, volume: 18234567, previousClose: 138.29 },
-    'AMZN': { price: 178.35, change: 3.67, changePercent: '2.10%', open: 175.00, high: 179.00, low: 174.50, volume: 41234567, previousClose: 174.68 },
-    'TSLA': { price: 251.44, change: -5.22, changePercent: '-2.03%', open: 256.00, high: 257.50, low: 250.80, volume: 89234567, previousClose: 256.66 },
-    'NVDA': { price: 875.28, change: 12.45, changePercent: '1.44%', open: 863.00, high: 878.00, low: 862.00, volume: 34567890, previousClose: 862.83 },
-    'META': { price: 483.59, change: 7.89, changePercent: '1.66%', open: 476.00, high: 485.00, low: 475.50, volume: 12345678, previousClose: 475.70 },
-    'SPY': { price: 452.16, change: 1.23, changePercent: '0.27%', open: 451.00, high: 453.00, low: 450.50, volume: 78234567, previousClose: 450.93 },
-    'QQQ': { price: 440.37, change: 2.45, changePercent: '0.56%', open: 438.00, high: 441.00, low: 437.50, volume: 34567890, previousClose: 437.92 }
-  }
-
-  if (demoData[symbol.toUpperCase()]) {
-    const stockData = {
-      symbol: symbol.toUpperCase(),
-      name: symbol.toUpperCase(),
-      ...demoData[symbol.toUpperCase()],
-      latestTradingDay: new Date().toISOString().split('T')[0]
-    }
-    
-    return stockData
-  }
-  
-  return null
+// Initialize API Manager
+function getAPIManager(env: Bindings) {
+  return new APIManager(env)
 }
 
-// Helper function to search stocks using Twelve Data
-async function searchStocks(query: string, env: Bindings): Promise<any[]> {
-  try {
-    // Twelve Data symbol search endpoint
-    const response = await fetch(
-      `https://api.twelvedata.com/symbol_search?symbol=${encodeURIComponent(query)}&apikey=${env.TWELVE_DATA_API_KEY}`
-    )
-    const data = await response.json()
-    
-    if (data && data.data && Array.isArray(data.data)) {
-      return data.data.map((item: any) => ({
-        symbol: item.symbol,
-        name: item.instrument_name,
-        type: item.instrument_type?.toLowerCase() || 'stock',
-        exchange: item.exchange,
-        currency: item.currency,
-        country: item.country
-      }))
-    }
-  } catch (error) {
-    console.error('Error searching stocks:', error)
-  }
-  
-  return []
+// Admin authentication middleware
+async function verifyAdmin(password: string, env: Bindings): Promise<boolean> {
+  return password === env.ADMIN_PASSWORD
 }
 
 // API Routes
+
+// Admin: Get API configuration
+app.get('/api/admin/config', async (c) => {
+  const { env } = c
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !await verifyAdmin(authHeader.replace('Bearer ', ''), env)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  try {
+    const providers = await env.DB.prepare(`
+      SELECT name, display_name, is_active, is_default, rate_limit, daily_limit, last_used,
+        CASE WHEN api_key IS NOT NULL THEN 1 ELSE 0 END as has_key
+      FROM api_providers
+      ORDER BY is_default DESC, name
+    `).all()
+    
+    const settings = await env.DB.prepare(`
+      SELECT setting_key, setting_value, setting_type, description
+      FROM admin_settings
+    `).all()
+    
+    const usage = await env.DB.prepare(`
+      SELECT 
+        p.name as provider,
+        COUNT(u.id) as total_requests,
+        AVG(u.response_time) as avg_response_time,
+        SUM(CASE WHEN u.status_code >= 400 THEN 1 ELSE 0 END) as error_count,
+        MAX(u.created_at) as last_request
+      FROM api_providers p
+      LEFT JOIN api_usage u ON p.id = u.provider_id
+      WHERE u.created_at >= datetime('now', '-24 hours')
+      GROUP BY p.id
+    `).all()
+    
+    return c.json({
+      providers: providers.results,
+      settings: settings.results,
+      usage: usage.results,
+      current_provider: env.DEFAULT_API_PROVIDER
+    })
+  } catch (error) {
+    return c.json({ error: 'Failed to get configuration' }, 500)
+  }
+})
+
+// Admin: Update API configuration
+app.post('/api/admin/config', async (c) => {
+  const { env } = c
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !await verifyAdmin(authHeader.replace('Bearer ', ''), env)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  const { provider, apiKey, setDefault } = await c.req.json()
+  
+  try {
+    // Update API key if provided
+    if (apiKey !== undefined) {
+      await env.DB.prepare(`
+        UPDATE api_providers 
+        SET api_key = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE name = ?
+      `).bind(apiKey || null, provider).run()
+    }
+    
+    // Set as default if requested
+    if (setDefault) {
+      await env.DB.prepare(`UPDATE api_providers SET is_default = 0`).run()
+      await env.DB.prepare(`
+        UPDATE api_providers 
+        SET is_default = 1, is_active = 1, updated_at = CURRENT_TIMESTAMP
+        WHERE name = ?
+      `).bind(provider).run()
+    }
+    
+    return c.json({ success: true, message: 'Configuration updated' })
+  } catch (error) {
+    return c.json({ error: 'Failed to update configuration' }, 500)
+  }
+})
+
+// Admin: Update settings
+app.post('/api/admin/settings', async (c) => {
+  const { env } = c
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !await verifyAdmin(authHeader.replace('Bearer ', ''), env)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  const settings = await c.req.json()
+  
+  try {
+    for (const [key, value] of Object.entries(settings)) {
+      await env.DB.prepare(`
+        UPDATE admin_settings 
+        SET setting_value = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE setting_key = ?
+      `).bind(String(value), key).run()
+    }
+    
+    return c.json({ success: true, message: 'Settings updated' })
+  } catch (error) {
+    return c.json({ error: 'Failed to update settings' }, 500)
+  }
+})
+
+// Admin: Test API provider
+app.post('/api/admin/test-api', async (c) => {
+  const { env } = c
+  const authHeader = c.req.header('Authorization')
+  
+  if (!authHeader || !await verifyAdmin(authHeader.replace('Bearer ', ''), env)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  const { provider, symbol = 'AAPL' } = await c.req.json()
+  
+  try {
+    const apiManager = getAPIManager(env)
+    const startTime = Date.now()
+    
+    // Force specific provider for testing
+    const originalProvider = env.DEFAULT_API_PROVIDER
+    env.DEFAULT_API_PROVIDER = provider
+    
+    const quote = await apiManager.getQuote(symbol)
+    const responseTime = Date.now() - startTime
+    
+    env.DEFAULT_API_PROVIDER = originalProvider
+    
+    if (quote) {
+      return c.json({
+        success: true,
+        provider,
+        responseTime,
+        data: quote
+      })
+    } else {
+      return c.json({
+        success: false,
+        provider,
+        responseTime,
+        error: 'Failed to fetch quote'
+      })
+    }
+  } catch (error) {
+    return c.json({
+      success: false,
+      provider,
+      error: error.message
+    })
+  }
+})
 
 // Get portfolio summary
 app.get('/api/portfolio/:id', async (c) => {
@@ -167,111 +243,95 @@ app.get('/api/portfolio/:id', async (c) => {
   }
 })
 
-// Search stocks/ETFs
+// Search stocks/ETFs - ALWAYS USE REAL API DATA
 app.get('/api/search', async (c) => {
   const { env } = c
   const query = c.req.query('q')
   
-  if (!query) {
+  if (!query || query.length < 1) {
     return c.json({ error: 'Query parameter required' }, 400)
   }
   
   try {
-    // Search in local database first
-    const results = await env.DB.prepare(`
-      SELECT * FROM securities 
-      WHERE symbol LIKE ? OR name LIKE ?
-      LIMIT 10
-    `).bind(`%${query}%`, `%${query}%`).all()
+    const apiManager = getAPIManager(env)
     
-    // If we have local results, return them
-    if (results.results.length > 0) {
-      return c.json({ results: results.results })
-    }
+    // Always try to get real API data first
+    const apiResults = await apiManager.searchStocks(query)
     
-    // Search using Twelve Data API
-    const apiResults = await searchStocks(query, env)
-    if (apiResults.length > 0) {
+    if (apiResults && apiResults.length > 0) {
       return c.json({ results: apiResults })
     }
     
-    // Fallback: return popular stocks that match the query
-    const fallbackStocks = [
-      { symbol: 'AAPL', name: 'Apple Inc.', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'MSFT', name: 'Microsoft Corporation', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'GOOGL', name: 'Alphabet Inc.', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'TSLA', name: 'Tesla Inc.', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'META', name: 'Meta Platforms Inc.', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'stock', exchange: 'NASDAQ' },
-      { symbol: 'JPM', name: 'JPMorgan Chase & Co.', type: 'stock', exchange: 'NYSE' },
-      { symbol: 'V', name: 'Visa Inc.', type: 'stock', exchange: 'NYSE' },
-      { symbol: 'WMT', name: 'Walmart Inc.', type: 'stock', exchange: 'NYSE' },
-      { symbol: 'SPY', name: 'SPDR S&P 500 ETF', type: 'etf', exchange: 'NYSE' },
-      { symbol: 'QQQ', name: 'Invesco QQQ Trust', type: 'etf', exchange: 'NASDAQ' },
-      { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', type: 'etf', exchange: 'NYSE' }
-    ]
+    // If API fails, check local database (but these are real stocks previously fetched)
+    const dbResults = await env.DB.prepare(`
+      SELECT symbol, name, type, exchange, currency FROM securities 
+      WHERE symbol LIKE ? OR name LIKE ?
+      LIMIT 20
+    `).bind(`%${query}%`, `%${query}%`).all()
     
-    const matchedStocks = fallbackStocks.filter(stock => 
-      stock.symbol.toLowerCase().includes(query.toLowerCase()) ||
-      stock.name.toLowerCase().includes(query.toLowerCase())
-    )
-    
-    if (matchedStocks.length > 0) {
-      return c.json({ results: matchedStocks })
+    if (dbResults.results.length > 0) {
+      return c.json({ 
+        results: dbResults.results,
+        source: 'database',
+        message: 'Showing previously fetched stocks. Check API configuration for live data.'
+      })
     }
     
-    // If still no matches, return some popular stocks as suggestions
     return c.json({ 
-      results: fallbackStocks.slice(0, 5),
-      message: 'Showing popular stocks.'
+      results: [],
+      error: 'No results found. Please check API configuration in admin panel.'
     })
   } catch (error) {
     console.error('Search error:', error)
-    return c.json({ error: 'Search failed' }, 500)
+    return c.json({ error: 'Search failed. Please check API configuration.' }, 500)
   }
 })
 
-// Get stock quote
+// Get stock quote - ALWAYS USE REAL API DATA
 app.get('/api/quote/:symbol', async (c) => {
   const { env } = c
   const symbol = c.req.param('symbol').toUpperCase()
   
   try {
-    // Check database first
-    const dbStock = await env.DB.prepare(`
-      SELECT * FROM securities WHERE symbol = ?
-    `).bind(symbol).first()
+    const apiManager = getAPIManager(env)
     
-    // Fetch fresh data from API
-    const freshData = await fetchStockData(symbol, env)
+    // Always fetch fresh data from API
+    const freshData = await apiManager.getQuote(symbol)
     
     if (freshData) {
       // Update database with fresh data
+      const dbStock = await env.DB.prepare(`
+        SELECT id FROM securities WHERE symbol = ?
+      `).bind(symbol).first()
+      
       if (dbStock) {
         await env.DB.prepare(`
           UPDATE securities 
-          SET last_price = ?, last_updated = CURRENT_TIMESTAMP
+          SET last_price = ?, name = ?, last_updated = CURRENT_TIMESTAMP
           WHERE symbol = ?
-        `).bind(freshData.price, symbol).run()
+        `).bind(freshData.price, freshData.name || symbol, symbol).run()
       } else {
-        // Insert new security
         await env.DB.prepare(`
-          INSERT INTO securities (symbol, name, type, last_price)
-          VALUES (?, ?, 'stock', ?)
-        `).bind(symbol, freshData.name || symbol, freshData.price).run()
+          INSERT INTO securities (symbol, name, type, last_price, exchange, currency)
+          VALUES (?, ?, 'stock', ?, ?, ?)
+        `).bind(
+          symbol, 
+          freshData.name || symbol, 
+          freshData.price,
+          freshData.exchange || 'UNKNOWN',
+          freshData.currency || 'USD'
+        ).run()
       }
       
       return c.json(freshData)
     }
     
-    if (dbStock) {
-      return c.json(dbStock)
-    }
-    
-    return c.json({ error: 'Stock not found' }, 404)
+    return c.json({ 
+      error: 'Unable to fetch real-time quote. Please check API configuration in admin panel.' 
+    }, 404)
   } catch (error) {
-    return c.json({ error: 'Failed to fetch quote' }, 500)
+    console.error('Quote error:', error)
+    return c.json({ error: 'Failed to fetch quote. Please check API configuration.' }, 500)
   }
 })
 
@@ -282,22 +342,30 @@ app.post('/api/portfolio/:id/buy', async (c) => {
   const { symbol, quantity, price } = await c.req.json()
   
   try {
-    // Get or create security
+    const apiManager = getAPIManager(env)
+    
+    // Get or create security with REAL API data
     let security = await env.DB.prepare(`
       SELECT * FROM securities WHERE symbol = ?
     `).bind(symbol).first()
     
     if (!security) {
-      // Fetch data and create security
-      const stockData = await fetchStockData(symbol, env)
+      // Fetch real data from API
+      const stockData = await apiManager.getQuote(symbol)
       if (!stockData) {
-        return c.json({ error: 'Invalid symbol' }, 400)
+        return c.json({ error: 'Invalid symbol - unable to verify with market data' }, 400)
       }
       
       const result = await env.DB.prepare(`
-        INSERT INTO securities (symbol, name, type, last_price)
-        VALUES (?, ?, 'stock', ?)
-      `).bind(symbol, stockData.name || symbol, stockData.price).run()
+        INSERT INTO securities (symbol, name, type, last_price, exchange, currency)
+        VALUES (?, ?, 'stock', ?, ?, ?)
+      `).bind(
+        symbol, 
+        stockData.name || symbol,
+        stockData.price,
+        stockData.exchange || 'UNKNOWN',
+        stockData.currency || 'USD'
+      ).run()
       
       security = { id: result.meta.last_row_id, symbol, last_price: stockData.price }
     }
@@ -309,7 +377,7 @@ app.post('/api/portfolio/:id/buy', async (c) => {
     `).bind(portfolioId, security.id).first()
     
     if (existingHolding) {
-      // Update existing holding (average cost calculation)
+      // Update existing holding
       const newQuantity = existingHolding.quantity + quantity
       const newAvgCost = ((existingHolding.quantity * existingHolding.average_cost) + (quantity * price)) / newQuantity
       
@@ -420,21 +488,29 @@ app.post('/api/watchlist', async (c) => {
   const { symbol, targetPrice, notes } = await c.req.json()
   
   try {
-    // Get or create security
+    const apiManager = getAPIManager(env)
+    
+    // Get or create security with REAL API data
     let security = await env.DB.prepare(`
       SELECT * FROM securities WHERE symbol = ?
     `).bind(symbol).first()
     
     if (!security) {
-      const stockData = await fetchStockData(symbol, env)
+      const stockData = await apiManager.getQuote(symbol)
       if (!stockData) {
-        return c.json({ error: 'Invalid symbol' }, 400)
+        return c.json({ error: 'Invalid symbol - unable to verify with market data' }, 400)
       }
       
       const result = await env.DB.prepare(`
-        INSERT INTO securities (symbol, name, type, last_price)
-        VALUES (?, ?, 'stock', ?)
-      `).bind(symbol, stockData.name || symbol, stockData.price).run()
+        INSERT INTO securities (symbol, name, type, last_price, exchange, currency)
+        VALUES (?, ?, 'stock', ?, ?, ?)
+      `).bind(
+        symbol,
+        stockData.name || symbol,
+        stockData.price,
+        stockData.exchange || 'UNKNOWN',
+        stockData.currency || 'USD'
+      ).run()
       
       security = { id: result.meta.last_row_id }
     }
@@ -471,11 +547,13 @@ app.get('/api/transactions/:portfolioId', async (c) => {
   }
 })
 
-// Batch update prices
+// Batch update prices - REAL API DATA ONLY
 app.post('/api/update-prices', async (c) => {
   const { env } = c
   
   try {
+    const apiManager = getAPIManager(env)
+    
     // Get all unique securities in portfolios
     const securities = await env.DB.prepare(`
       SELECT DISTINCT s.* FROM securities s
@@ -483,24 +561,36 @@ app.post('/api/update-prices', async (c) => {
     `).all()
     
     const updates = []
-    for (const security of securities.results) {
-      const freshData = await fetchStockData(security.symbol, env)
-      if (freshData) {
-        updates.push(env.DB.prepare(`
-          UPDATE securities 
-          SET last_price = ?, last_updated = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(freshData.price, security.id).run())
-      }
-      // Add small delay to respect API rate limits
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
+    let successCount = 0
+    let errorCount = 0
     
-    await Promise.all(updates)
+    for (const security of securities.results) {
+      try {
+        const freshData = await apiManager.getQuote(security.symbol)
+        if (freshData) {
+          await env.DB.prepare(`
+            UPDATE securities 
+            SET last_price = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(freshData.price, security.id).run()
+          successCount++
+        } else {
+          errorCount++
+        }
+      } catch (error) {
+        console.error(`Failed to update ${security.symbol}:`, error)
+        errorCount++
+      }
+      
+      // Small delay to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 150))
+    }
     
     return c.json({ 
       success: true, 
-      message: `Updated ${updates.length} securities` 
+      message: `Updated ${successCount} securities, ${errorCount} errors`,
+      updated: successCount,
+      errors: errorCount
     })
   } catch (error) {
     return c.json({ error: 'Failed to update prices' }, 500)
@@ -515,7 +605,7 @@ app.get('/', (c) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Investment Platform - Stock & ETF Portfolio Manager</title>
+        <title>Investment Platform - Real-Time Stock & ETF Portfolio Manager</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -525,6 +615,28 @@ app.get('/', (c) => {
         <div id="app"></div>
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
         <script src="/static/app.js"></script>
+    </body>
+    </html>
+  `)
+})
+
+// Admin page
+app.get('/admin', (c) => {
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin - API Configuration</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <link href="/static/styles.css" rel="stylesheet">
+    </head>
+    <body class="bg-gray-50">
+        <div id="adminApp"></div>
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="/static/admin.js"></script>
     </body>
     </html>
   `)
