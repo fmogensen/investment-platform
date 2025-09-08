@@ -760,7 +760,7 @@ class InvestmentApp {
                     <th class="text-right py-2">Current Price</th>
                     <th class="text-right py-2">Value</th>
                     <th class="text-right py-2">Gain/Loss</th>
-                    <th class="text-right py-2">%</th>
+                    <th class="text-right py-2">Gain/Loss %</th>
                     <th class="text-right py-2">Actions</th>
                   </tr>
                 </thead>
@@ -777,7 +777,7 @@ class InvestmentApp {
                         ${h.gain_loss >= 0 ? '+' : ''}$${Math.abs(h.gain_loss).toFixed(2)}
                       </td>
                       <td class="py-3 text-right ${h.gain_loss_percent >= 0 ? 'positive' : 'negative'}" data-symbol="${h.symbol}" data-field="gain-loss-percent">
-                        (${h.gain_loss_percent >= 0 ? '+' : ''}${h.gain_loss_percent.toFixed(2)}%)
+                        ${h.gain_loss_percent >= 0 ? '+' : ''}${h.gain_loss_percent.toFixed(2)}%
                       </td>
                       <td class="py-3 text-right">
                         <button onclick="app.showBuyModal('${h.symbol}')" 
