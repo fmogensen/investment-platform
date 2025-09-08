@@ -200,16 +200,18 @@ class AdminPanel {
           </div>
         </div>
 
-        <!-- API Providers -->
+        <!-- API Providers (WebSocket Only) -->
         <div class="bg-white rounded-lg shadow-lg p-6">
-          <h2 class="text-xl font-bold mb-4">API Providers</h2>
+          <h2 class="text-xl font-bold mb-4">WebSocket-Enabled API Providers</h2>
+          <p class="text-sm text-gray-600 mb-4">Only real-time WebSocket APIs are supported for near real-time market data.</p>
           <div class="space-y-4">
-            ${providers.map(provider => `
+            ${providers.filter(p => ['finnhub', 'twelve_data'].includes(p.name)).map(provider => `
               <div class="border rounded-lg p-4 ${provider.is_default ? 'border-blue-500 bg-blue-50' : ''}">
                 <div class="flex justify-between items-start">
                   <div class="flex-1">
                     <h3 class="font-bold text-lg">
-                      ${provider.display_name}
+                      ${provider.display_name || provider.name}
+                      <span class="ml-2 text-sm bg-purple-600 text-white px-2 py-1 rounded">WEBSOCKET</span>
                       ${provider.is_default ? '<span class="ml-2 text-sm bg-blue-600 text-white px-2 py-1 rounded">DEFAULT</span>' : ''}
                       ${provider.has_key ? '<span class="ml-2 text-sm bg-green-600 text-white px-2 py-1 rounded">CONFIGURED</span>' : '<span class="ml-2 text-sm bg-red-600 text-white px-2 py-1 rounded">NO KEY</span>'}
                     </h3>
@@ -314,11 +316,12 @@ class AdminPanel {
             <i class="fas fa-info-circle mr-2"></i>Important Information
           </h3>
           <ul class="list-disc list-inside space-y-1 text-sm">
-            <li>All API keys are encrypted and stored securely</li>
-            <li>The platform will automatically failover to backup APIs if the primary fails</li>
+            <li>Only WebSocket-enabled APIs (Finnhub & Twelve Data) are supported</li>
+            <li>Real-time data streams directly to your browser via WebSockets</li>
+            <li>Automatic reconnection if connection is lost</li>
             <li>Test each API after adding/updating keys to ensure they work</li>
             <li>Rate limits are enforced to prevent API quota exhaustion</li>
-            <li>Usage statistics reset every 24 hours</li>
+            <li>Near real-time updates every 2-3 seconds</li>
           </ul>
         </div>
       </div>

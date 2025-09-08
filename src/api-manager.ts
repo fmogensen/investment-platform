@@ -1,4 +1,4 @@
-// API Manager - Handles multiple stock market data providers
+// API Manager - Handles WebSocket-enabled stock market data providers only
 // NO SAMPLE DATA - Always uses real API data
 
 export interface StockQuote {
@@ -42,29 +42,26 @@ export class APIManager {
     const provider = await this.db.prepare(`
       SELECT name FROM api_providers 
       WHERE is_active = 1 AND is_default = 1 AND api_key IS NOT NULL
+      AND name IN ('finnhub', 'twelve_data')
       LIMIT 1
     `).first()
     
     if (provider) return provider.name
     
-    // Fallback order if no default is set
-    const providers = ['twelve_data', 'finnhub', 'alpha_vantage']
+    // Fallback order - only WebSocket-enabled providers
+    const providers = ['finnhub', 'twelve_data']
     for (const p of providers) {
       if (this.getApiKey(p)) return p
     }
     
-    throw new Error('No API provider configured')
+    throw new Error('No WebSocket-enabled API provider configured')
   }
 
   // Get API key for provider
   private getApiKey(provider: string): string | null {
     const keyMap: Record<string, string> = {
-      'alpha_vantage': this.env.ALPHA_VANTAGE_API_KEY,
       'finnhub': this.env.FINNHUB_API_KEY,
-      'twelve_data': this.env.TWELVE_DATA_API_KEY,
-      'yahoo_finance': this.env.RAPIDAPI_KEY,
-      'polygon': this.env.POLYGON_API_KEY,
-      'iex_cloud': this.env.IEX_CLOUD_API_KEY
+      'twelve_data': this.env.TWELVE_DATA_API_KEY
     }
     return keyMap[provider] || null
   }
@@ -114,9 +111,6 @@ export class APIManager {
           case 'finnhub':
             quote = await this.getFinnhubQuote(symbol)
             break
-          case 'alpha_vantage':
-            quote = await this.getAlphaVantageQuote(symbol)
-            break
         }
         
         if (quote) {
@@ -152,9 +146,6 @@ export class APIManager {
           case 'finnhub':
             results = await this.searchFinnhub(query)
             break
-          case 'alpha_vantage':
-            results = await this.searchAlphaVantage(query)
-            break
         }
         
         if (results.length > 0) {
@@ -180,8 +171,8 @@ export class APIManager {
       if (defaultProvider) providers.push(defaultProvider)
     } catch (e) {}
     
-    // Add other providers as fallback
-    const allProviders = ['twelve_data', 'finnhub', 'alpha_vantage']
+    // Add other WebSocket-enabled providers as fallback
+    const allProviders = ['finnhub', 'twelve_data']
     for (const p of allProviders) {
       if (!providers.includes(p) && this.getApiKey(p)) {
         providers.push(p)
@@ -191,7 +182,7 @@ export class APIManager {
     return providers
   }
 
-  // Twelve Data implementation
+  // Twelve Data implementation (WebSocket supported)
   private async getTwelveDataQuote(symbol: string): Promise<StockQuote | null> {
     const apiKey = this.getApiKey('twelve_data')
     if (!apiKey) return null
@@ -245,7 +236,7 @@ export class APIManager {
     return []
   }
 
-  // Finnhub implementation
+  // Finnhub implementation (WebSocket supported)
   private async getFinnhubQuote(symbol: string): Promise<StockQuote | null> {
     const apiKey = this.getApiKey('finnhub')
     if (!apiKey) return null
@@ -303,54 +294,26 @@ export class APIManager {
     return []
   }
 
-  // Alpha Vantage implementation
-  private async getAlphaVantageQuote(symbol: string): Promise<StockQuote | null> {
-    const apiKey = this.getApiKey('alpha_vantage')
-    if (!apiKey) return null
-    
-    const response = await fetch(
-      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`
-    )
-    const data = await response.json()
-    
-    if (data['Global Quote'] && data['Global Quote']['01. symbol']) {
-      const quote = data['Global Quote']
-      return {
-        symbol: quote['01. symbol'],
-        price: parseFloat(quote['05. price']),
-        change: parseFloat(quote['09. change']),
-        changePercent: quote['10. change percent'],
-        volume: parseInt(quote['06. volume']),
-        open: parseFloat(quote['02. open']),
-        high: parseFloat(quote['03. high']),
-        low: parseFloat(quote['04. low']),
-        previousClose: parseFloat(quote['08. previous close']),
-        latestTradingDay: quote['07. latest trading day']
+  // Check WebSocket support for provider
+  hasWebSocketSupport(provider: string): boolean {
+    return ['finnhub', 'twelve_data'].includes(provider)
+  }
+
+  // Get WebSocket configuration for provider
+  getWebSocketConfig(provider: string): any {
+    const configs: Record<string, any> = {
+      'finnhub': {
+        url: 'wss://ws.finnhub.io',
+        apiKey: this.getApiKey('finnhub'),
+        supported: true
+      },
+      'twelve_data': {
+        url: 'wss://ws.twelvedata.com/v1/quotes/price',
+        apiKey: this.getApiKey('twelve_data'),
+        supported: true
       }
     }
     
-    return null
-  }
-
-  private async searchAlphaVantage(query: string): Promise<SearchResult[]> {
-    const apiKey = this.getApiKey('alpha_vantage')
-    if (!apiKey) return []
-    
-    const response = await fetch(
-      `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${query}&apikey=${apiKey}`
-    )
-    const data = await response.json()
-    
-    if (data.bestMatches && Array.isArray(data.bestMatches)) {
-      return data.bestMatches.slice(0, 20).map((match: any) => ({
-        symbol: match['1. symbol'],
-        name: match['2. name'],
-        type: match['3. type']?.toLowerCase() || 'stock',
-        exchange: match['4. region'],
-        currency: match['8. currency']
-      }))
-    }
-    
-    return []
+    return configs[provider] || { supported: false }
   }
 }

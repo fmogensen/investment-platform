@@ -22,26 +22,32 @@ class RealtimeMarketData {
 
     try {
       this.eventSource = new EventSource('/api/realtime')
-
-      this.eventSource.onopen = () => {
-        console.log('Real-time connection established')
-        this.connected = true
-        this.connectionRetries = 0
-        this.updateConnectionStatus('connected')
-      }
+      
+      // EventSource doesn't have onopen, connection is implicit
+      let firstMessage = true
 
       this.eventSource.onmessage = (event) => {
         try {
+          // First successful message means we're connected
+          if (firstMessage) {
+            console.log('Real-time connection established')
+            this.connected = true
+            this.connectionRetries = 0
+            this.updateConnectionStatus('connected')
+            firstMessage = false
+          }
+          
           const data = JSON.parse(event.data)
           this.handleRealtimeData(data)
         } catch (error) {
-          console.error('Error parsing real-time data:', error)
+          console.error('Error parsing real-time data:', error, event.data)
         }
       }
 
       this.eventSource.onerror = (error) => {
-        console.error('Real-time connection error:', error)
+        console.error('Real-time connection error')
         this.connected = false
+        this.eventSource.close()
         this.updateConnectionStatus('error')
         
         // Attempt reconnection with exponential backoff
@@ -50,15 +56,29 @@ class RealtimeMarketData {
           this.connectionRetries++
           
           console.log(`Reconnecting in ${delay / 1000} seconds... (attempt ${this.connectionRetries}/${this.maxRetries})`)
-          setTimeout(() => this.connect(), delay)
+          this.updateConnectionStatus('reconnecting')
+          
+          setTimeout(() => {
+            console.log('Attempting reconnection...')
+            this.connect()
+          }, delay)
         } else {
-          console.error('Max reconnection attempts reached. Falling back to polling.')
+          console.error('Max reconnection attempts reached.')
           this.updateConnectionStatus('disconnected')
+          
+          // Try again after 1 minute
+          setTimeout(() => {
+            this.connectionRetries = 0
+            this.connect()
+          }, 60000)
         }
       }
     } catch (error) {
       console.error('Failed to establish real-time connection:', error)
       this.updateConnectionStatus('error')
+      
+      // Retry after 5 seconds
+      setTimeout(() => this.connect(), 5000)
     }
   }
 
@@ -67,6 +87,11 @@ class RealtimeMarketData {
     switch (data.type) {
       case 'connected':
         console.log('Real-time feed connected at', new Date(data.timestamp))
+        this.updateConnectionStatus('connected')
+        break
+        
+      case 'info':
+        console.log('Info:', data.message)
         break
         
       case 'quote':
@@ -194,6 +219,11 @@ class RealtimeMarketData {
       case 'disconnected':
         indicator.className = 'realtime-indicator disconnected'
         indicator.innerHTML = '<i class="fas fa-satellite-dish"></i> Disconnected'
+        break
+        
+      case 'reconnecting':
+        indicator.className = 'realtime-indicator connecting'
+        indicator.innerHTML = '<i class="fas fa-redo fa-spin"></i> Reconnecting...'
         break
     }
   }

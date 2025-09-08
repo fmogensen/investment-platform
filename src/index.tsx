@@ -552,82 +552,103 @@ app.get('/api/transactions/:portfolioId', async (c) => {
 app.get('/api/realtime', async (c) => {
   const { env } = c
   
-  // Set up SSE headers
-  c.header('Content-Type', 'text/event-stream')
-  c.header('Cache-Control', 'no-cache')
-  c.header('Connection', 'keep-alive')
-  
+  // Create a readable stream for SSE
+  const { readable, writable } = new TransformStream()
+  const writer = writable.getWriter()
   const encoder = new TextEncoder()
-  const stream = new TransformStream()
-  const writer = stream.writable.getWriter()
   
-  // Send initial connection message
-  await writer.write(encoder.encode('data: {"type":"connected","timestamp":' + Date.now() + '}\n\n'))
-  
-  // Set up real-time updates
-  const apiManager = getAPIManager(env)
-  let intervalId: any
-  
-  try {
-    // Get portfolio securities to track
-    const securities = await env.DB.prepare(`
-      SELECT DISTINCT s.symbol FROM securities s
-      JOIN holdings h ON s.id = h.security_id
-    `).all()
-    
-    const symbols = securities.results.map((s: any) => s.symbol)
-    
-    // Send updates every 2 seconds for near real-time experience
-    intervalId = setInterval(async () => {
-      try {
-        for (const symbol of symbols) {
-          const quote = await apiManager.getQuote(symbol)
-          if (quote) {
-            const message = JSON.stringify({
-              type: 'quote',
-              symbol: symbol,
-              price: quote.price,
-              change: quote.change,
-              changePercent: quote.changePercent,
-              volume: quote.volume,
-              timestamp: Date.now()
-            })
+  // Start async processing
+  const streamPromise = (async () => {
+    try {
+      // Send initial connection message
+      await writer.write(encoder.encode(`data: {"type":"connected","timestamp":${Date.now()}}\n\n`))
+      
+      // Initialize API manager
+      const apiManager = getAPIManager(env)
+      
+      // Get portfolio securities to track
+      const securities = await env.DB.prepare(`
+        SELECT DISTINCT s.symbol FROM securities s
+        JOIN holdings h ON s.id = h.security_id
+        LIMIT 20
+      `).all()
+      
+      if (!securities.results || securities.results.length === 0) {
+        await writer.write(encoder.encode(`data: {"type":"info","message":"No holdings to track"}\n\n`))
+      }
+      
+      const symbols = securities.results?.map((s: any) => s.symbol) || []
+      
+      // Send updates every 3 seconds
+      let updateCount = 0
+      const intervalId = setInterval(async () => {
+        try {
+          updateCount++
+          
+          // Batch update symbols
+          for (const symbol of symbols) {
+            try {
+              const quote = await apiManager.getQuote(symbol)
+              if (quote) {
+                const message = JSON.stringify({
+                  type: 'quote',
+                  symbol: symbol,
+                  price: quote.price,
+                  change: quote.change,
+                  changePercent: quote.changePercent,
+                  volume: quote.volume,
+                  timestamp: Date.now()
+                })
+                
+                await writer.write(encoder.encode(`data: ${message}\n\n`))
+              }
+            } catch (err) {
+              console.error(`Error fetching quote for ${symbol}:`, err)
+            }
             
-            await writer.write(encoder.encode(`data: ${message}\n\n`))
+            // Small delay between requests to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100))
           }
+          
+          // Send heartbeat every 10 updates
+          if (updateCount % 10 === 0) {
+            await writer.write(encoder.encode(`:heartbeat\n\n`))
+          }
+        } catch (error) {
+          console.error('Update cycle error:', error)
         }
-      } catch (error) {
-        console.error('Error sending real-time update:', error)
-      }
-    }, 2000) // Update every 2 seconds
-    
-    // Keep connection alive with heartbeat
-    const heartbeatInterval = setInterval(async () => {
-      try {
-        await writer.write(encoder.encode(':heartbeat\n\n'))
-      } catch (error) {
-        clearInterval(heartbeatInterval)
+      }, 3000) // Update every 3 seconds
+      
+      // Keep stream open for 5 minutes max, then client should reconnect
+      setTimeout(() => {
         clearInterval(intervalId)
-      }
-    }, 30000) // Heartbeat every 30 seconds
-    
-    // Clean up on connection close
-    c.req.raw.signal.addEventListener('abort', () => {
-      clearInterval(intervalId)
-      clearInterval(heartbeatInterval)
+        writer.close()
+      }, 300000) // 5 minutes
+      
+      // Handle abort signal
+      c.req.raw.signal?.addEventListener('abort', () => {
+        clearInterval(intervalId)
+        writer.close()
+      })
+      
+    } catch (error) {
+      console.error('SSE stream error:', error)
+      try {
+        await writer.write(encoder.encode(`data: {"type":"error","message":"Stream error: ${error.message}"}\n\n`))
+      } catch (e) {}
       writer.close()
-    })
-    
-  } catch (error) {
-    console.error('SSE error:', error)
-    await writer.write(encoder.encode('data: {"type":"error","message":"Failed to initialize real-time updates"}\n\n'))
-  }
+    }
+  })()
   
-  return new Response(stream.readable, {
+  // Don't await the promise, let it run in background
+  streamPromise.catch(console.error)
+  
+  return new Response(readable, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no' // Disable buffering for nginx
     }
   })
 })
