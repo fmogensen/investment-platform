@@ -12,6 +12,7 @@ class InvestmentApp {
     this.charts = {};
     this.lastUpdateTime = null;
     this.updateInProgress = false;
+    this.realtimeData = null;
     
     this.init();
   }
@@ -19,8 +20,65 @@ class InvestmentApp {
   init() {
     this.render();
     this.loadPortfolio();
-    this.startPriceUpdates();
+    this.initializeRealtime();
     this.setupEventListeners();
+  }
+
+  initializeRealtime() {
+    // Initialize real-time market data connection
+    this.realtimeData = new RealtimeMarketData();
+    
+    // Register callback for real-time updates
+    this.realtimeData.onQuoteUpdate((symbol, quote) => {
+      this.handleRealtimeQuote(symbol, quote);
+    });
+    
+    // Connect to real-time feed
+    this.realtimeData.connect();
+    
+    // Update display every second
+    setInterval(() => {
+      this.realtimeData.updateLastUpdateDisplay();
+    }, 1000);
+  }
+
+  handleRealtimeQuote(symbol, quote) {
+    // Update portfolio if we have holdings for this symbol
+    if (this.portfolio?.holdings) {
+      const holding = this.portfolio.holdings.find(h => h.symbol === symbol);
+      if (holding) {
+        // Update holding with real-time price
+        holding.last_price = quote.price;
+        holding.current_value = holding.quantity * quote.price;
+        holding.gain_loss = holding.current_value - (holding.quantity * holding.average_cost);
+        holding.gain_loss_percent = (holding.gain_loss / (holding.quantity * holding.average_cost)) * 100;
+        
+        // Recalculate portfolio totals
+        this.recalculatePortfolioTotals();
+      }
+    }
+  }
+
+  recalculatePortfolioTotals() {
+    if (!this.portfolio?.holdings) return;
+    
+    const totals = this.portfolio.holdings.reduce((acc, holding) => {
+      acc.value += holding.current_value || 0;
+      acc.cost += (holding.quantity * holding.average_cost) || 0;
+      return acc;
+    }, { value: 0, cost: 0 });
+    
+    this.portfolio.summary.totalValue = totals.value;
+    this.portfolio.summary.totalCost = totals.cost;
+    this.portfolio.summary.totalGainLoss = totals.value - totals.cost;
+    this.portfolio.summary.totalGainLossPercent = totals.cost ? 
+      ((totals.value - totals.cost) / totals.cost * 100) : 0;
+    
+    // Update header value
+    const headerValue = document.getElementById('headerValue');
+    if (headerValue) {
+      headerValue.textContent = totals.value.toFixed(2);
+    }
   }
 
   setupEventListeners() {
@@ -276,18 +334,9 @@ class InvestmentApp {
   }
 
   startPriceUpdates() {
-    // Initial update
-    this.updatePrices();
-    
-    // Update prices every 60 seconds
-    this.priceUpdateInterval = setInterval(() => {
-      this.updatePrices();
-    }, 60000);
-    
-    // Update the "last updated" display every 10 seconds
-    setInterval(() => {
-      this.updateLastUpdateDisplay();
-    }, 10000);
+    // Real-time updates are handled by RealtimeMarketData
+    // This is now a fallback for manual refresh if needed
+    console.log('Real-time updates active via SSE/WebSocket');
   }
 
   stopPriceUpdates() {
@@ -699,11 +748,11 @@ class InvestmentApp {
                     <tr class="border-b hover:bg-gray-50">
                       <td class="py-3 font-semibold">${h.symbol}</td>
                       <td class="py-3">${h.name}</td>
-                      <td class="py-3 text-right">${h.quantity}</td>
-                      <td class="py-3 text-right">$${h.average_cost.toFixed(2)}</td>
-                      <td class="py-3 text-right">$${h.last_price.toFixed(2)}</td>
-                      <td class="py-3 text-right font-semibold">$${h.current_value.toFixed(2)}</td>
-                      <td class="py-3 text-right ${h.gain_loss >= 0 ? 'positive' : 'negative'}">
+                      <td class="py-3 text-right" data-symbol="${h.symbol}" data-field="quantity">${h.quantity}</td>
+                      <td class="py-3 text-right" data-symbol="${h.symbol}" data-field="avg-cost">$${h.average_cost.toFixed(2)}</td>
+                      <td class="py-3 text-right" data-symbol="${h.symbol}" data-field="price">$${h.last_price.toFixed(2)}</td>
+                      <td class="py-3 text-right font-semibold" data-symbol="${h.symbol}" data-field="value">$${h.current_value.toFixed(2)}</td>
+                      <td class="py-3 text-right ${h.gain_loss >= 0 ? 'positive' : 'negative'}" data-symbol="${h.symbol}" data-field="gain-loss">
                         ${h.gain_loss >= 0 ? '+' : ''}$${Math.abs(h.gain_loss).toFixed(2)}
                         <br>
                         <span class="text-sm">(${h.gain_loss_percent >= 0 ? '+' : ''}${h.gain_loss_percent.toFixed(2)}%)</span>
@@ -888,12 +937,11 @@ class InvestmentApp {
               <div class="text-sm">
                 <div>Portfolio: $<span id="headerValue">-</span></div>
                 <div class="text-xs opacity-90" id="headerLastUpdate">
-                  <i class="fas fa-clock"></i> Waiting for update...
+                  <i class="fas fa-clock"></i> Connecting...
                 </div>
               </div>
-              <div id="headerUpdateIndicator" class="update-indicator">
-                <i class="fas fa-sync-alt"></i>
-                <span>Auto-update ON</span>
+              <div id="realtimeStatus" class="realtime-indicator connecting">
+                <i class="fas fa-satellite-dish"></i> Connecting...
               </div>
             </div>
           </div>

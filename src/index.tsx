@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
 import { APIManager } from './api-manager'
+import { RealtimeManager } from './realtime-manager'
 
 type Bindings = {
   DB: D1Database
@@ -547,6 +548,90 @@ app.get('/api/transactions/:portfolioId', async (c) => {
   }
 })
 
+// Server-Sent Events for real-time updates
+app.get('/api/realtime', async (c) => {
+  const { env } = c
+  
+  // Set up SSE headers
+  c.header('Content-Type', 'text/event-stream')
+  c.header('Cache-Control', 'no-cache')
+  c.header('Connection', 'keep-alive')
+  
+  const encoder = new TextEncoder()
+  const stream = new TransformStream()
+  const writer = stream.writable.getWriter()
+  
+  // Send initial connection message
+  await writer.write(encoder.encode('data: {"type":"connected","timestamp":' + Date.now() + '}\n\n'))
+  
+  // Set up real-time updates
+  const apiManager = getAPIManager(env)
+  let intervalId: any
+  
+  try {
+    // Get portfolio securities to track
+    const securities = await env.DB.prepare(`
+      SELECT DISTINCT s.symbol FROM securities s
+      JOIN holdings h ON s.id = h.security_id
+    `).all()
+    
+    const symbols = securities.results.map((s: any) => s.symbol)
+    
+    // Send updates every 2 seconds for near real-time experience
+    intervalId = setInterval(async () => {
+      try {
+        for (const symbol of symbols) {
+          const quote = await apiManager.getQuote(symbol)
+          if (quote) {
+            const message = JSON.stringify({
+              type: 'quote',
+              symbol: symbol,
+              price: quote.price,
+              change: quote.change,
+              changePercent: quote.changePercent,
+              volume: quote.volume,
+              timestamp: Date.now()
+            })
+            
+            await writer.write(encoder.encode(`data: ${message}\n\n`))
+          }
+        }
+      } catch (error) {
+        console.error('Error sending real-time update:', error)
+      }
+    }, 2000) // Update every 2 seconds
+    
+    // Keep connection alive with heartbeat
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        await writer.write(encoder.encode(':heartbeat\n\n'))
+      } catch (error) {
+        clearInterval(heartbeatInterval)
+        clearInterval(intervalId)
+      }
+    }, 30000) // Heartbeat every 30 seconds
+    
+    // Clean up on connection close
+    c.req.raw.signal.addEventListener('abort', () => {
+      clearInterval(intervalId)
+      clearInterval(heartbeatInterval)
+      writer.close()
+    })
+    
+  } catch (error) {
+    console.error('SSE error:', error)
+    await writer.write(encoder.encode('data: {"type":"error","message":"Failed to initialize real-time updates"}\n\n'))
+  }
+  
+  return new Response(stream.readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    }
+  })
+})
+
 // Batch update prices - REAL API DATA ONLY
 app.post('/api/update-prices', async (c) => {
   const { env } = c
@@ -614,6 +699,7 @@ app.get('/', (c) => {
     <body class="bg-gray-50">
         <div id="app"></div>
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="/static/realtime.js"></script>
         <script src="/static/app.js"></script>
     </body>
     </html>
