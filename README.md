@@ -14,10 +14,13 @@
 ## Currently Completed Features
 
 ### ✅ Portfolio Management
+- **Multiple Portfolio Support** - Create, edit, and delete unlimited portfolios
+- **Portfolio Switcher** - Easy switching between portfolios with dropdown selector
+- **Portfolio Manager UI** - Dedicated interface for managing all portfolios
 - View portfolio summary with total value, cost basis, and returns
 - Track individual holdings with real-time profit/loss calculations
 - Portfolio allocation visualization with interactive charts
-- Support for multiple portfolios (database structure ready)
+- Automatic portfolio persistence with localStorage
 
 ### ✅ Stock Trading
 - Buy stocks and ETFs with quantity and price inputs
@@ -97,6 +100,10 @@ The platform now supports multiple API providers with automatic failover:
 ## API Endpoints
 
 ### Portfolio Management
+- `GET /api/portfolios` - Get all portfolios for the user
+- `POST /api/portfolios` - Create new portfolio (params: name, description)
+- `PUT /api/portfolios/:id` - Update portfolio (params: name, description)
+- `DELETE /api/portfolios/:id` - Delete portfolio (protected for default portfolio)
 - `GET /api/portfolio/:id` - Get portfolio details with holdings
 - `POST /api/portfolio/:id/buy` - Buy stocks (params: symbol, quantity, price)
 - `POST /api/portfolio/:id/sell` - Sell stocks (params: symbol, quantity, price)
@@ -143,7 +150,9 @@ The platform now supports multiple API providers with automatic failover:
 ### Getting Started
 1. Visit the platform URL
 2. The default portfolio is automatically loaded
-3. Start by searching for stocks in the Search tab
+3. Click "Manage" in the header to create additional portfolios
+4. Use the portfolio dropdown to switch between portfolios
+5. Start by searching for stocks in the Search tab
 
 ### How to Buy Stocks
 1. Go to the Search tab
@@ -158,6 +167,14 @@ The platform now supports multiple API providers with automatic failover:
 3. Click the red minus icon
 4. Enter quantity to sell
 5. Review profit/loss and confirm
+
+### Managing Your Portfolios
+1. Click "Manage" button next to portfolio selector
+2. View all your portfolios with their values and holdings count
+3. Click "New Portfolio" to create a new one
+4. Click "Edit" to modify portfolio name/description
+5. Click "Delete" to remove portfolios (except default)
+6. Click "Switch" to change active portfolio
 
 ### Managing Your Watchlist
 1. Search for a stock
@@ -309,7 +326,7 @@ For issues or questions, please open an issue on GitHub or contact the developme
 ---
 
 **Last Updated**: January 2025  
-**Version**: 2.0.0  
+**Version**: 2.1.0  
 **API Status**: ✅ All APIs Configured and Active  
 **Data Source**: 100% Real Market Data (NO SAMPLE DATA)  
 **Status**: Active Development
